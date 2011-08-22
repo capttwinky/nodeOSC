@@ -2,18 +2,15 @@ var dgram = require('dgram');
 var util = require('util');
 var server = dgram.createSocket("udp4");
 
-
-
-var statHolder = new Object;
-statHolder.times = [getTime(),getTime()];
-statHolder.switchState = -1;
-statHolder.readInt = 0;
-statHolder.lapTime = function(){
-    return this.times[1]-this.times[0];
-    }
-statHolder.roundTrip = function(){
-    return((getTime()-this.times[0])/1000.0);
-    }
+var statHolder = {
+    times : [getTime(),getTime()],
+    switchState : -1,
+    readInt : 0,
+    lstTimes : [],
+    lapTime:function(){return this.times[1]-this.times[0]},
+    roundTrip:function(){return((getTime()-this.times[0])/1000.0)},
+    varAvg : function(){return(this.lstTimes.reduce(function(a, b){ return a + b; })/this.lstTimes.length)}
+    };
 
 function getTime(){
     return new Date().getTime();
@@ -24,11 +21,16 @@ function msgParser(msg){
     var myVal = msg.slice(msg.length-2,msg.length);
     intVal = myVal[0]*256+myVal[1];
     if(intVal===0 && statHolder.switchState !== 0 && statHolder.readInt > 1){
-        console.log(statHolder.roundTrip()+" seconds.");
+        var cyTime = statHolder.roundTrip();
+        statHolder.lstTimes.push(cyTime);
+        if(statHolder.lstTimes.length > 100){
+            statHolder.lstTimes.shift();
+        }
+        console.log(statHolder.roundTrip()+" seconds. "+statHolder.varAvg()+" avg/"+statHolder.lstTimes.length);
         statHolder.switchState = 0;
         statHolder.times = [getTime()];
     }
-    if(intVal>100){
+    if(intVal>128){
         statHolder.readInt += 1;
         if(statHolder.switchState<1){
         statHolder.switchState = 1;
@@ -36,16 +38,14 @@ function msgParser(msg){
        // console.log(statHolder.lapTime());
         }
     }
+    return intVal
 }
 
 server.setBroadcast(true);
-
 server.on("message", function (msg, rinfo) {
     if(msg.length===28){
-        
-        msgParser(msg);
-        //console.log(myStr+":"+intVal.toString()+" from "+rinfo.address+":"+rinfo.port);
-    
+        intVal = msgParser(msg);
+        //console.log("\t\t"+intVal.toString()+" from "+rinfo.address+":"+rinfo.port);
     }
 });
 
